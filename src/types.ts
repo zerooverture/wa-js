@@ -17,3 +17,12 @@
 export interface Stringable {
   toString(): string;
 }
+
+declare global {
+  interface Window {
+    _wpp: any;
+    _DrawerManager: any;
+    _readCall: () => void;
+    _call: any;
+  }
+}
