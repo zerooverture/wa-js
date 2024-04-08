@@ -114,8 +114,14 @@ const getBodyText = (body: string | undefined, type: string = 'chat') => {
   switch (type) {
     case 'chat':
       return body || '';
-    default:
+    case 'image':
+    case 'video':
+    case 'audio':
+    case 'ptt':
+    case 'document':
       return `[${type}]`;
+    default:
+      return null;
   }
 };
 
@@ -133,7 +139,9 @@ const chatToFans = (
   contactModel: whatsapp.ChatModel | whatsapp.ContactModel
 ): any => {
   let nickname = '';
-  if ('contact' in contactModel) {
+  if ('formattedTitle' in contactModel && contactModel.formattedTitle) {
+    nickname = contactModel.formattedTitle;
+  } else if ('contact' in contactModel) {
     nickname = contactModel.contact.pushname || contactModel.contact.name;
   } else if ('pushname' in contactModel) {
     nickname = contactModel.pushname || contactModel.name;
@@ -162,15 +170,82 @@ window._DrawerManager;
 
 webpack.injectLoader();
 
+let __$propsName: string = '';
+const getReactProps = (dom: any): any => {
+  if (!__$propsName) {
+    const keys = Object.keys(dom);
+    for (const key of keys) {
+      if (key.startsWith('__reactProps$')) {
+        __$propsName = key;
+        break;
+      }
+    }
+  }
+  const propsName = __$propsName;
+  if (!propsName) return null;
+
+  return dom[propsName];
+};
+
+const disposeChatDom = (chatDom: Element) => {
+  const props = getReactProps(chatDom);
+  const model = props?.children?.props?.children?.props?.model;
+  const id = model?.id?._serialized;
+  if (!id) return;
+  chatDom.setAttribute('chat-id', id);
+  console.log([chatDom], model);
+  window._wpp.getRepeatFansInfoByIds([id]).then((rs: any) => {
+    if (rs.length > 0) {
+      const avatarDom = chatDom.querySelector('._ak8h > *') as HTMLElement;
+      if (avatarDom) {
+        avatarDom.style.position = 'relative';
+        const fansDom = window._wpp.getRepeatFansDom({
+          addTime: window._wpp.dateFormat(rs[0].create_time * 1000),
+          // addAccount: model.formattedTitle || rs.username,
+          addAccount: rs[0].username || rs[0].child_channel_name,
+        });
+        avatarDom.appendChild(fansDom);
+      }
+    }
+  });
+};
 window._readCall = () => {
+  const observer = new MutationObserver((mutationsList) => {
+    for (const mutation of mutationsList) {
+      // @ts-ignore
+      const addedNodes: HTMLElement[] = mutation.addedNodes;
+      for (const addedNode of addedNodes) {
+        if (addedNode?.getAttribute?.('role') === 'listitem') {
+          disposeChatDom(addedNode);
+        } else if (addedNode?.querySelector?.('[role="listitem"]')) {
+          addedNode.querySelectorAll('[role="listitem"]').forEach((chatDom) => {
+            disposeChatDom(chatDom);
+          });
+        }
+      }
+    }
+  });
+  observer.observe(document.body, {
+    attributes: false,
+    childList: true,
+    subtree: true,
+  });
+
+  document.querySelectorAll('[role="listitem"]').forEach((chatDom) => {
+    disposeChatDom(chatDom);
+  });
+
   // 准备完成后  工单登陆完毕
   // 初始化一次消息上报
   for (const msg of whatsapp.MsgStore.getModelsArray()) {
+    const bodyText = getBodyText(msg.body, msg.type);
+    if (!bodyText) continue;
+    const t = msg.t ? msg.t * 1000 : 0;
     const data: any = {
       contacts_id: msg.id.remote._serialized,
-      create_time: msg.t || 0,
+      create_time: t,
       id: msg.id.id,
-      init_text: getBodyText(msg.body, msg.type),
+      init_text: bodyText,
       is_self: msg.id.fromMe ? 1 : 0,
       translate_text: '',
       success: 0,
@@ -183,11 +258,15 @@ window._readCall = () => {
   }
   // 通过此事件监听新消息 可以监听到滚动历史的
   whatsapp.MsgStore.on('add', (msg: whatsapp.MsgModel) => {
+    const bodyText = getBodyText(msg.body, msg.type);
+    if (!bodyText) return;
+    const t = msg.t ? msg.t * 1000 : 0;
+
     const data: any = {
       contacts_id: msg.id.remote._serialized,
-      create_time: msg.t || 0,
+      create_time: t,
       id: msg.id.id,
-      init_text: getBodyText(msg.body, msg.type),
+      init_text: bodyText,
       is_self: msg.id.fromMe ? 1 : 0,
       translate_text: '',
       success: 0,
@@ -388,7 +467,7 @@ window._call = {
   },
   changeChatNickname(id: string, nickname?: string) {
     const rs = whatsapp.ContactStore.get(id);
-    if (!rs) return Promise.resolve('');
+    if (!rs) return '';
     console.log('ws changeChatNickname', id, rs.name, nickname);
     // @ts-ignore
     rs.ck_nickname = nickname;
@@ -411,6 +490,7 @@ window._call = {
   },
 
   setInputContents(val: string) {
+    val = unescape(val);
     console.log('valll', val);
     const inputDom = document.querySelector(
       '#main > footer .lexical-rich-text-input [contenteditable="true"]'
@@ -490,6 +570,7 @@ window._call = {
   ): Promise<string | void> {
     const chatData = chat.getActiveChat();
     if (!chatData) return;
+    console.log('dddddd', body);
     return await window._call.toSendForId(chatData.id + '', body, type, isHold);
   },
 
@@ -515,6 +596,8 @@ window._call = {
     }
 
     console.log('toSendForId', id, body, type, isHold);
+    body = unescape(body);
+    console.log('toSendForId2', id, body, type, isHold);
 
     switch (type) {
       case 'text': {
@@ -678,4 +761,8 @@ webpack.onReady(() => {
   window._DrawerManager =
     webpack.webpackRequire('WAWebDrawerManager')?.DrawerManager;
   window._wpp.init();
+});
+
+on('conn.logout', () => {
+  window._wpp.logout();
 });
