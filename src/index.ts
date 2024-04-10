@@ -110,16 +110,16 @@ export const version = __VERSION__;
 export const supportedWhatsappWeb = __SUPPORTED_WHATSAPP_WEB__;
 export const license = 'Apache-2.0';
 
-const getBodyText = (body: string | undefined, type: string = 'chat') => {
-  switch (type) {
+const getBodyText = (msg: whatsapp.MsgModel) => {
+  switch (msg.type) {
     case 'chat':
-      return body || '';
+      return msg.body || '';
     case 'image':
     case 'video':
     case 'audio':
     case 'ptt':
     case 'document':
-      return `[${type}]`;
+      return `[${msg.type}]${msg.caption}`;
     default:
       return null;
   }
@@ -215,22 +215,10 @@ const disposeChatDom = (chatDom: Element) => {
   const id = model?.id?._serialized;
   if (!id) return;
   chatDom.setAttribute('chat-id', id);
+  window._wpp.getRepeatFansInfoById(id);
   console.log([chatDom], model);
-  window._wpp.getRepeatFansInfoByIds([id]).then((rs: any) => {
-    if (rs.length > 0) {
-      const avatarDom = chatDom.querySelector('._ak8h > *') as HTMLElement;
-      if (avatarDom) {
-        avatarDom.style.position = 'relative';
-        const fansDom = window._wpp.getRepeatFansDom({
-          addTime: window._wpp.dateFormat(rs[0].create_time * 1000),
-          // addAccount: model.formattedTitle || rs.username,
-          addAccount: rs[0].username || rs[0].child_channel_name,
-        });
-        avatarDom.appendChild(fansDom);
-      }
-    }
-  });
 };
+
 window._readCall = () => {
   // 开始重粉标记
   const observer = new MutationObserver((mutationsList) => {
@@ -257,12 +245,15 @@ window._readCall = () => {
   document.querySelectorAll('[role="listitem"]').forEach((chatDom) => {
     disposeChatDom(chatDom);
   });
-  // 开始重粉标记
+  // 结束重粉标记
 
   // 准备完成后  工单登陆完毕
   // 初始化一次消息上报
   for (const msg of whatsapp.MsgStore.getModelsArray()) {
-    const bodyText = getBodyText(msg.body, msg.type);
+    const server = msg.from?.server;
+    if (server !== 'c.us') continue;
+
+    const bodyText = getBodyText(msg);
     if (!bodyText) continue;
     const t = msg.t ? msg.t * 1000 : 0;
     const data: any = {
@@ -275,14 +266,17 @@ window._readCall = () => {
       success: 0,
       user_info_child_channel_id: 0, // 在App中处理
       child_id: 0, // 以前的好像和 user_info_child_channel_id 是一样的
-      server: msg.from?.server,
+      server,
       isGroupMsg: msg.isGroupMsg || msg.id.remote.isGroup(),
     };
     window._wpp.uploadMessage(data);
   }
   // 通过此事件监听新消息 可以监听到滚动历史的
   whatsapp.MsgStore.on('add', (msg: whatsapp.MsgModel) => {
-    const bodyText = getBodyText(msg.body, msg.type);
+    const server = msg.from?.server;
+    if (server !== 'c.us') return;
+
+    const bodyText = getBodyText(msg);
     if (!bodyText) return;
     const t = msg.t ? msg.t * 1000 : 0;
 
@@ -296,7 +290,7 @@ window._readCall = () => {
       success: 0,
       user_info_child_channel_id: 0, // 在App中处理
       child_id: 0, // 以前的好像和 user_info_child_channel_id 是一样的
-      server: msg.from?.server,
+      server,
       isGroupMsg: msg.isGroupMsg || msg.id.remote.isGroup(),
     };
     window._wpp.uploadMessage(data);
@@ -464,8 +458,12 @@ window._call = {
 
     // 联系人列表
     try {
-      const contactList: whatsapp.ContactModel[] =
-        whatsapp.ContactStore.getFilteredContacts({});
+      // const contactList: whatsapp.ContactModel[] =
+      // whatsapp.ContactStore.getFilteredContacts({});
+
+      const contactList: whatsapp.ContactModel[] = await contact.list({
+        onlyMyContacts: true,
+      });
 
       for (const contactModel of contactList) {
         if (contactModel.id.server === 'lid') continue;
