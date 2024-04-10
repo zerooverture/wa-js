@@ -29,7 +29,7 @@ export declare class ContactCollection extends BaseCollection<ContactModel> {
   contactRemoved(e?: any): any;
   contactHashLength(): any;
   isFilteredContact(e?: any): boolean;
-  getFilteredContacts(): any;
+  getFilteredContacts(e?: any): any;
   sync(): any;
   updateFrequentContacts(e?: any): any;
   frequentContacts(e?: any, t?: any): any;

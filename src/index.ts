@@ -149,6 +149,12 @@ const chatToFans = (
   const avatarData = whatsapp.ProfilePicThumbStore.get(
     contactModel.id._serialized
   );
+
+  let is_group = 0;
+  try {
+    is_group = contactModel.isGroup ? 1 : 0;
+  } catch {}
+
   return {
     chat_user_id: contactModel.id._serialized,
     country:
@@ -159,14 +165,14 @@ const chatToFans = (
     ori_img_url: avatarData?.img,
     // @ts-ignore
     ori_img_key: avatarData?.filehash,
-    is_group: contactModel.isGroup ? 1 : 0,
+    is_group,
     nickname,
     phone: contactModel.id.user,
     username: contactModel.id.user,
   };
 };
 
-window._DrawerManager;
+// window._DrawerManager;
 
 webpack.injectLoader();
 
@@ -182,6 +188,22 @@ const getReactProps = (dom: any): any => {
     }
   }
   const propsName = __$propsName;
+  if (!propsName) return null;
+
+  return dom[propsName];
+};
+let __$fiberName: string = '';
+const getReactFiber = (dom: any): any => {
+  if (!__$fiberName) {
+    const keys = Object.keys(dom);
+    for (const key of keys) {
+      if (key.startsWith('__reactFiber$')) {
+        __$fiberName = key;
+        break;
+      }
+    }
+  }
+  const propsName = __$fiberName;
   if (!propsName) return null;
 
   return dom[propsName];
@@ -210,6 +232,7 @@ const disposeChatDom = (chatDom: Element) => {
   });
 };
 window._readCall = () => {
+  // 开始重粉标记
   const observer = new MutationObserver((mutationsList) => {
     for (const mutation of mutationsList) {
       // @ts-ignore
@@ -234,6 +257,7 @@ window._readCall = () => {
   document.querySelectorAll('[role="listitem"]').forEach((chatDom) => {
     disposeChatDom(chatDom);
   });
+  // 开始重粉标记
 
   // 准备完成后  工单登陆完毕
   // 初始化一次消息上报
@@ -282,6 +306,9 @@ window._readCall = () => {
   whatsapp.ChatStore.on('add', (chat: whatsapp.ChatModel) => {
     window._wpp.chatAdd(chatToFans(chat));
     // window._wpp.sendChatList();
+  });
+  whatsapp.ContactStore.on('add', (contactModel: whatsapp.ContactModel) => {
+    window._wpp.chatAdd(chatToFans(contactModel));
   });
 
   whatsapp.ChatStore.on('change:unreadCount', (chat: whatsapp.ChatModel) => {
@@ -345,8 +372,11 @@ window._call = {
   async specialSend() {
     const activeChat = chat.getActiveChat();
     if (!activeChat) return;
-    const models = activeChat.attachMediaContents?._models;
 
+    const dialog = document.querySelector('._ajwz');
+    if (dialog) window._wpp.domSetLoading(dialog, true);
+
+    const models = activeChat.attachMediaContents?._models;
     for (const model of models) {
       if (model.caption && !window._wpp.isValidMessage(model.caption)) {
         model.caption = await window._wpp.toSendTranslation(
@@ -368,6 +398,7 @@ window._call = {
 
     activeChat.setAttachMediaContents(null);
     window._DrawerManager.closeDrawerMid();
+    if (dialog) window._wpp.domSetLoading(dialog, false);
   },
 
   async getChatList() {
@@ -418,27 +449,34 @@ window._call = {
     const haveId: string[] = []; // 防止重复的
     // 回话列表
     // const chatList: ChatModel[] = await wpp.chat.list()
-    const chatList: whatsapp.ChatModel[] = whatsapp.ChatStore.getModelsArray();
-
-    for (const chatModel of chatList) {
-      if (haveId.includes(chatModel.id._serialized)) continue;
-      if (whatsapp.functions.getIsMe(chatModel.contact)) continue;
-      haveId.push(chatModel.id._serialized);
-      fansList.push(chatToFans(chatModel));
+    try {
+      const chatList: whatsapp.ChatModel[] =
+        whatsapp.ChatStore.getModelsArray();
+      for (const chatModel of chatList) {
+        if (haveId.includes(chatModel.id._serialized)) continue;
+        if (whatsapp.functions.getIsMe(chatModel.contact)) continue;
+        haveId.push(chatModel.id._serialized);
+        fansList.push(chatToFans(chatModel));
+      }
+    } catch (e) {
+      console.error('getFansList Chat Model Error');
     }
 
     // 联系人列表
-    const contactList: whatsapp.ContactModel[] = await contact.list({
-      onlyMyContacts: true,
-    });
+    try {
+      const contactList: whatsapp.ContactModel[] =
+        whatsapp.ContactStore.getFilteredContacts({});
 
-    for (const contactModel of contactList) {
-      if (contactModel.id.server === 'lid') continue;
-      if (haveId.includes(contactModel.id._serialized)) continue;
-      if (whatsapp.functions.getIsMe(contactModel)) continue;
-      haveId.push(contactModel.id._serialized);
+      for (const contactModel of contactList) {
+        if (contactModel.id.server === 'lid') continue;
+        if (haveId.includes(contactModel.id._serialized)) continue;
+        if (whatsapp.functions.getIsMe(contactModel)) continue;
+        haveId.push(contactModel.id._serialized);
 
-      fansList.push(chatToFans(contactModel));
+        fansList.push(chatToFans(contactModel));
+      }
+    } catch (e) {
+      console.error('getFansList Contact Model Error', e);
     }
 
     console.log(fansList);
@@ -532,6 +570,7 @@ window._call = {
     return {
       data: data.replace('data:audio/ogg; codecs=opus;base64,', ''),
       format: 'ogg-opus',
+      duration: Number(msgModel.duration || 0),
     };
   },
 
@@ -754,12 +793,39 @@ window._call = {
       }) || []
     );
   },
+  async editMsgSend() {
+    const inputDom = document.querySelector(
+      '[class="x1n2onr6 x1c4vz4f x2lah0s"] [data-lexical-editor]'
+    ) as any;
+    const msgModel = getReactFiber(
+      document.querySelector('[class="x1n2onr6 x1c4vz4f x2lah0s"]')
+    )?.return?.memoizedProps?.msg;
+    if (!inputDom) return;
+
+    window._wpp.domSetLoading(inputDom, true);
+
+    const tranText = await window._wpp.toSendTranslation(
+      inputDom.__lexicalTextContent!,
+      true,
+      true
+    );
+
+    const msgId = msgModel.id._serialized;
+    // console.log('aaa', msgId, tranText);
+    chat.editMessage(msgId, tranText);
+
+    window._wpp.domSetLoading(inputDom, false);
+    window._ModalManager.close();
+    console.log('editMsgSend', inputDom, msgModel);
+  },
 };
 
 webpack.onReady(() => {
   console.log('onReady');
   window._DrawerManager =
     webpack.webpackRequire('WAWebDrawerManager')?.DrawerManager;
+  window._ModalManager =
+    webpack.webpackRequire('WAWebModalManager')?.ModalManager;
   window._wpp.init();
 });
 

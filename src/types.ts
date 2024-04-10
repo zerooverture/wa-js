@@ -22,6 +22,7 @@ declare global {
   interface Window {
     _wpp: any;
     _DrawerManager: any;
+    _ModalManager: any;
     _readCall: () => void;
     _call: any;
   }
