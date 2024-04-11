@@ -211,12 +211,12 @@ const getReactFiber = (dom: any): any => {
 
 const disposeChatDom = (chatDom: Element) => {
   const props = getReactProps(chatDom);
-  const model = props?.children?.props?.children?.props?.model;
-  const id = model?.id?._serialized;
+  const id = props?.children?.key;
+  // const id = model?.id?._serialized;
   if (!id) return;
   chatDom.setAttribute('chat-id', id);
   window._wpp.getRepeatFansInfoById(id);
-  console.log([chatDom], model);
+  console.log([chatDom], id);
 };
 
 window._readCall = () => {
@@ -226,12 +226,29 @@ window._readCall = () => {
       // @ts-ignore
       const addedNodes: HTMLElement[] = mutation.addedNodes;
       for (const addedNode of addedNodes) {
-        if (addedNode?.getAttribute?.('role') === 'listitem') {
+        if (
+          addedNode?.getAttribute?.('role') === 'listitem' &&
+          addedNode.querySelector('._ak8n ._ak8h > :not([class])')
+        ) {
           disposeChatDom(addedNode);
-        } else if (addedNode?.querySelector?.('[role="listitem"]')) {
-          addedNode.querySelectorAll('[role="listitem"]').forEach((chatDom) => {
-            disposeChatDom(chatDom);
-          });
+        } else if (
+          addedNode?.querySelector?.(
+            '[role="listitem"] ._ak8n ._ak8h > :not([class])'
+          )
+        ) {
+          addedNode
+            .querySelectorAll('[role="listitem"] ._ak8n ._ak8h > :not([class])')
+            .forEach((chatDom) => {
+              disposeChatDom(chatDom);
+            });
+        } else if (
+          addedNode?.parentElement?.className === '_ak8h' &&
+          addedNode?.parentElement?.parentElement?.className === '_ak8n'
+        ) {
+          // console.log('addedNode', [addedNode]);
+          disposeChatDom(addedNode);
+        } else {
+          // console.log('addedNode', [addedNode]);
         }
       }
     }
@@ -242,9 +259,11 @@ window._readCall = () => {
     subtree: true,
   });
 
-  document.querySelectorAll('[role="listitem"]').forEach((chatDom) => {
-    disposeChatDom(chatDom);
-  });
+  document
+    .querySelectorAll('[role="listitem"] ._ak8n ._ak8h > :not([class])')
+    .forEach((chatDom) => {
+      disposeChatDom(chatDom);
+    });
   // 结束重粉标记
 
   // 准备完成后  工单登陆完毕
@@ -350,7 +369,7 @@ window._readCall = () => {
     });
   });
 
-  // 开始监测敏感行为
+  // ------监测敏感行为
   whatsapp.ChatStore.on('remove', async (chatModel: whatsapp.ChatModel) => {
     const avatarData = whatsapp.ProfilePicThumbStore.get(
       chatModel.id._serialized
@@ -382,9 +401,6 @@ window._readCall = () => {
 
     window._wpp.uploadSensitiveBehaviorChatDelete(params);
   });
-  // whatsapp.MsgStore.on('change:type', (msg: whatsapp.MsgModel) => {
-  //   console.log('msg edit', msg);
-  // });
   whatsapp.MsgStore.on(
     'change:body',
     async (msg: whatsapp.MsgModel, newBody: string, oldBody: string) => {
@@ -440,9 +456,7 @@ window._readCall = () => {
       }
     }
   );
-  // whatsapp.MsgStore.on('delete', (msg: whatsapp.MsgModel) => {
-  //   console.log('msg change', msg);
-  // });
+  // ------监测敏感行为
 };
 
 window._call = {
