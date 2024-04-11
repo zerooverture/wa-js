@@ -23,6 +23,7 @@ declare global {
     _wpp: any;
     _DrawerManager: any;
     _ModalManager: any;
+    _userinfo: any;
     _readCall: () => void;
     _call: any;
   }

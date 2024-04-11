@@ -349,6 +349,100 @@ window._readCall = () => {
       },
     });
   });
+
+  // 开始监测敏感行为
+  whatsapp.ChatStore.on('remove', async (chatModel: whatsapp.ChatModel) => {
+    const avatarData = whatsapp.ProfilePicThumbStore.get(
+      chatModel.id._serialized
+    );
+    let avatar = '';
+    if (avatarData?.img) {
+      avatar = await window._wpp.getImageBase64ForUrl({
+        url: avatarData.img,
+      });
+    }
+    const params = {
+      from: {
+        account: window._userinfo.userId,
+        img: window._userinfo.server_avatar,
+        nickname: window._userinfo.nickname,
+      },
+      to: {
+        account: chatModel.id._serialized,
+        img: avatar,
+        nickname:
+          chatModel.formattedTitle ||
+          chatModel.contact.pushname ||
+          chatModel.contact.name ||
+          chatModel.name,
+      },
+      fromIsMe: true,
+    };
+    console.log('chat remove', params);
+
+    window._wpp.uploadSensitiveBehaviorChatDelete(params);
+  });
+  // whatsapp.MsgStore.on('change:type', (msg: whatsapp.MsgModel) => {
+  //   console.log('msg edit', msg);
+  // });
+  whatsapp.MsgStore.on(
+    'change:body',
+    async (msg: whatsapp.MsgModel, newBody: string, oldBody: string) => {
+      if (newBody.startsWith('/9j/') || oldBody.startsWith('/9j/')) return;
+
+      if (!msg.from || !msg.to) return;
+      const formData = whatsapp.ContactStore.get(msg.from._serialized);
+      const toData = whatsapp.ContactStore.get(msg.to._serialized);
+      if (!formData || !toData) return;
+      const fromAvatarData = formData.getProfilePicThumb();
+      const toAvatarData = toData.getProfilePicThumb();
+
+      let fromAvatar = '';
+      if (fromAvatarData?.img) {
+        fromAvatar = await window._wpp.getImageBase64ForUrl({
+          url: fromAvatarData.img,
+        });
+      }
+      let toAvatar = '';
+      if (toAvatarData?.img) {
+        toAvatar = await window._wpp.getImageBase64ForUrl({
+          url: toAvatarData.img,
+        });
+      }
+
+      const from = {
+        account: formData.id._serialized,
+        img: fromAvatar,
+        nickname: formData.name || formData.pushname || formData.notifyName,
+      };
+      const to = {
+        account: msg.to._serialized,
+        img: toAvatar,
+        nickname: toData.name || toData.pushname || toData.notifyName,
+      };
+
+      const params: any = {
+        from,
+        to,
+        fromIsMe: msg.id.fromMe,
+        msgId: msg.id._serialized,
+      };
+
+      if (newBody) {
+        // 如果body 不为空 则是修改
+        params.content = oldBody;
+        params.editedContent = newBody;
+        window._wpp.uploadSensitiveBehaviorMsgEdit(params);
+      } else {
+        // 如果body 为空则是删除
+        params.content = oldBody;
+        window._wpp.uploadSensitiveBehaviorMsgDelete(params);
+      }
+    }
+  );
+  // whatsapp.MsgStore.on('delete', (msg: whatsapp.MsgModel) => {
+  //   console.log('msg change', msg);
+  // });
 };
 
 window._call = {
@@ -481,25 +575,32 @@ window._call = {
     return fansList;
   },
   async getUserinfo(): Promise<any> {
-    const profileName = profile.getMyProfileName();
-    const myStatus = await status.getMyStatus();
+    if (!window._userinfo) {
+      const profileName = profile.getMyProfileName();
+      const myStatus = await status.getMyStatus();
 
-    const thumb = (await status.getMyStatus()).contact.profilePicThumb;
-    // console.log('thumb', thumb.img, thumb.filehash, JSON.stringify(thumb))
-    const avatar = await window._wpp.getImageBase64ForUrl({ url: thumb.img });
+      const thumb = (await status.getMyStatus()).contact.profilePicThumb;
+      // console.log('thumb', thumb.img, thumb.filehash, JSON.stringify(thumb))
+      const avatar = await window._wpp.getImageBase64ForUrl({ url: thumb.img });
 
-    console.log('avatar', avatar);
-    return {
-      userId: myStatus.id.user,
-      username: myStatus.id._serialized,
-      avatar: thumb.img,
-      server_avatar: avatar,
-      nickname:
-        profileName || myStatus.contact.pushname || myStatus.contact.name,
-      phone: myStatus.id.user,
-      // _serialized: myStatus.id._serialized,
-      version_no: whatsapp.contants.SANITIZED_VERSION_STR || '',
-    };
+      console.log('avatar', avatar);
+      window._userinfo = {
+        userId: myStatus.id.user,
+        username: myStatus.id._serialized,
+        avatar: thumb.img,
+        server_avatar: avatar,
+        nickname:
+          profileName ||
+          myStatus.contact.formattedTitle ||
+          myStatus.contact.pushname ||
+          myStatus.contact.name,
+        phone: myStatus.id.user,
+        // _serialized: myStatus.id._serialized,
+        version_no: whatsapp.contants.SANITIZED_VERSION_STR || '',
+      };
+    }
+
+    return window._userinfo;
   },
   changeChatNickname(id: string, nickname?: string) {
     const rs = whatsapp.ContactStore.get(id);
