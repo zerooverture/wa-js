@@ -119,7 +119,7 @@ const getBodyText = (msg: whatsapp.MsgModel) => {
     case 'audio':
     case 'ptt':
     case 'document':
-      return `[${msg.type}]${msg.caption}`;
+      return `[${msg.type}]${msg.caption || ''}`;
     default:
       return null;
   }
@@ -190,7 +190,11 @@ const getReactProps = (dom: any): any => {
   const propsName = __$propsName;
   if (!propsName) return null;
 
-  return dom[propsName];
+  if (dom[propsName]) return dom[propsName];
+  else {
+    __$propsName = '';
+    return getReactProps(dom);
+  }
 };
 let __$fiberName: string = '';
 const getReactFiber = (dom: any): any => {
@@ -206,7 +210,12 @@ const getReactFiber = (dom: any): any => {
   const propsName = __$fiberName;
   if (!propsName) return null;
 
-  return dom[propsName];
+  // return dom[propsName];
+  if (dom[propsName]) return dom[propsName];
+  else {
+    __$fiberName = '';
+    return getReactFiber(dom);
+  }
 };
 
 const disposeChatDom = (chatDom: Element) => {
@@ -404,7 +413,7 @@ window._readCall = () => {
   whatsapp.MsgStore.on(
     'change:body',
     async (msg: whatsapp.MsgModel, newBody: string, oldBody: string) => {
-      if (newBody.startsWith('/9j/') || oldBody.startsWith('/9j/')) return;
+      if (newBody?.startsWith('/9j/') || oldBody?.startsWith('/9j/')) return;
 
       if (!msg.from || !msg.to) return;
       const formData = whatsapp.ContactStore.get(msg.from._serialized);
