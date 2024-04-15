@@ -413,43 +413,45 @@ window._readCall = () => {
   whatsapp.MsgStore.on(
     'change:body',
     async (msg: whatsapp.MsgModel, newBody: string, oldBody: string) => {
+      // 必须是自己发的消息才上报
+      const fromIsMe = msg.id.fromMe;
+      const myData = await window._call.getUserinfo();
+      // const meId = myData.username;
+
+      // // @ts-ignore
+      // console.log('msg.revokeSender?.id', msg, msg.revokeSender?.id);
+
+      if (!fromIsMe) return;
       if (newBody?.startsWith('/9j/') || oldBody?.startsWith('/9j/')) return;
 
       if (!msg.from || !msg.to) return;
-      const formData = whatsapp.ContactStore.get(msg.from._serialized);
-      const toData = whatsapp.ContactStore.get(msg.to._serialized);
-      if (!formData || !toData) return;
-      const fromAvatarData = formData.getProfilePicThumb();
-      const toAvatarData = toData.getProfilePicThumb();
 
-      let fromAvatar = '';
-      if (fromAvatarData?.img) {
-        fromAvatar = await window._wpp.getImageBase64ForUrl({
-          url: fromAvatarData.img,
-        });
-      }
-      let toAvatar = '';
-      if (toAvatarData?.img) {
-        toAvatar = await window._wpp.getImageBase64ForUrl({
-          url: toAvatarData.img,
-        });
-      }
-
-      const from = {
-        account: formData.id._serialized,
-        img: fromAvatar,
-        nickname: formData.name || formData.pushname || formData.notifyName,
+      const meData = {
+        account: myData.userId,
+        img: myData.server_avatar,
+        nickname: myData.nickname,
       };
-      const to = {
-        account: msg.to._serialized,
-        img: toAvatar,
-        nickname: toData.name || toData.pushname || toData.notifyName,
+
+      const oid = fromIsMe ? msg.to._serialized : msg.from._serialized;
+      const oData = whatsapp.ContactStore.get(oid);
+      if (!oData) return;
+      const oAvatarData = oData.getProfilePicThumb();
+      let oAvatar = '';
+      if (oAvatarData?.img) {
+        oAvatar = await window._wpp.getImageBase64ForUrl({
+          url: oAvatarData.img,
+        });
+      }
+      const otherData = {
+        account: fromIsMe ? msg.to.user : msg.from.user,
+        img: oAvatar,
+        nickname: oData.name || oData.pushname || oData.notifyName,
       };
 
       const params: any = {
-        from,
-        to,
-        fromIsMe: msg.id.fromMe,
+        from: fromIsMe ? meData : otherData,
+        to: fromIsMe ? otherData : meData,
+        fromIsMe,
         msgId: msg.id._serialized,
       };
 
@@ -731,7 +733,6 @@ window._call = {
   ): Promise<string | void> {
     const chatData = chat.getActiveChat();
     if (!chatData) return;
-    console.log('dddddd', body);
     return await window._call.toSendForId(chatData.id + '', body, type, isHold);
   },
 
