@@ -326,10 +326,13 @@ window._readCall = () => {
 
   //  过程中新增的粉丝上报
   whatsapp.ChatStore.on('add', (chat: whatsapp.ChatModel) => {
+    // if (chat.id.server === 'lid') return;
+    if (!['c.us', 'g.us'].includes(chat.id.server)) return;
     window._wpp.chatAdd(chatToFans(chat));
     // window._wpp.sendChatList();
   });
   whatsapp.ContactStore.on('add', (contactModel: whatsapp.ContactModel) => {
+    if (!['c.us', 'g.us'].includes(contactModel.id.server)) return;
     window._wpp.chatAdd(chatToFans(contactModel));
   });
 
@@ -585,7 +588,7 @@ window._call = {
       });
 
       for (const contactModel of contactList) {
-        if (contactModel.id.server === 'lid') continue;
+        if (!['c.us', 'g.us'].includes(contactModel.id.server)) continue;
         if (haveId.includes(contactModel.id._serialized)) continue;
         if (whatsapp.functions.getIsMe(contactModel)) continue;
         haveId.push(contactModel.id._serialized);
