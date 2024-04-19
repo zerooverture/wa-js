@@ -169,6 +169,7 @@ const chatToFans = (
     nickname,
     phone: contactModel.id.user,
     username: contactModel.id.user,
+    // member_count: contactModel.attributes?.groupMetadata?.size || 0,
   };
 };
 
@@ -228,9 +229,16 @@ const disposeChatDom = (chatDom: Element) => {
   console.log([chatDom], id);
 };
 
-window._readCall = () => {
+const monitorReFans = () => {
+  const wrapDom = document.querySelector('.two > ._aigv._aigw');
+  if (!wrapDom) {
+    setTimeout(() => {
+      monitorReFans();
+    }, 300);
+  }
   // 开始重粉标记
   const observer = new MutationObserver((mutationsList) => {
+    console.log('refans observer');
     for (const mutation of mutationsList) {
       // @ts-ignore
       const addedNodes: HTMLElement[] = mutation.addedNodes;
@@ -262,7 +270,7 @@ window._readCall = () => {
       }
     }
   });
-  observer.observe(document.body, {
+  observer.observe(wrapDom!, {
     attributes: false,
     childList: true,
     subtree: true,
@@ -274,7 +282,10 @@ window._readCall = () => {
       disposeChatDom(chatDom);
     });
   // 结束重粉标记
+};
 
+window._readCall = () => {
+  monitorReFans();
   // 准备完成后  工单登陆完毕
   // 初始化一次消息上报
   for (const msg of whatsapp.MsgStore.getModelsArray()) {
@@ -418,13 +429,13 @@ window._readCall = () => {
     async (msg: whatsapp.MsgModel, newBody: string, oldBody: string) => {
       // 必须是自己发的消息才上报
       const fromIsMe = msg.id.fromMe;
+      if (!fromIsMe) return;
       const myData = await window._call.getUserinfo();
       // const meId = myData.username;
 
       // // @ts-ignore
       // console.log('msg.revokeSender?.id', msg, msg.revokeSender?.id);
 
-      if (!fromIsMe) return;
       if (newBody?.startsWith('/9j/') || oldBody?.startsWith('/9j/')) return;
 
       if (!msg.from || !msg.to) return;
@@ -495,19 +506,28 @@ window._call = {
     const models = activeChat.attachMediaContents?._models;
     for (const model of models) {
       if (model.caption && !window._wpp.isValidMessage(model.caption)) {
-        model.caption = await window._wpp.toSendTranslation(
-          model.caption,
-          true,
-          true
-        );
+        model.caption_tran = await window._wpp
+          .toSendTranslation(model.caption, true, true)
+          .catch(() => {
+            window._wpp.domSetLoading(dialog, false);
+            return null;
+          });
       }
+      // 返回为空表示可能被阻止了，比如中文检测
+      if (!model.caption_tran) {
+        window._wpp.domSetLoading(dialog, false);
+        return;
+      }
+    }
+
+    for (const model of models) {
       await chat.sendFileMessage(
         activeChat.id,
         model.type === 'document' ? model.file._blob : model.editedFile,
         {
           type: model.type,
           // ...model.mediaPrep._mediaData,
-          caption: model.caption,
+          caption: model.caption_tran,
         }
       );
     }
@@ -549,11 +569,13 @@ window._call = {
   async getFansInfo(id: string) {
     const chat = whatsapp.ChatStore.get(id);
     if (chat) {
+      if (!['c.us', 'g.us'].includes(chat.id.server)) return;
       return chatToFans(chat);
     }
 
     const contact = whatsapp.ContactStore.get(id);
     if (contact) {
+      if (!['c.us', 'g.us'].includes(contact.id.server)) return;
       return chatToFans(contact);
     }
 
@@ -569,6 +591,7 @@ window._call = {
       const chatList: whatsapp.ChatModel[] =
         whatsapp.ChatStore.getModelsArray();
       for (const chatModel of chatList) {
+        if (!['c.us', 'g.us'].includes(chatModel.id.server)) continue;
         if (haveId.includes(chatModel.id._serialized)) continue;
         if (whatsapp.functions.getIsMe(chatModel.contact)) continue;
         haveId.push(chatModel.id._serialized);
@@ -935,6 +958,11 @@ window._call = {
       true,
       true
     );
+    // 返回为空表示可能被阻止了，比如中文检测
+    if (!tranText) {
+      window._wpp.domSetLoading(inputDom, false);
+      return;
+    }
 
     const msgId = msgModel.id._serialized;
     // console.log('aaa', msgId, tranText);
