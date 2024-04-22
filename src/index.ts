@@ -219,11 +219,23 @@ const getReactFiber = (dom: any): any => {
   }
 };
 
-const disposeChatDom = (chatDom: Element) => {
+const disposeChatDom = (chatDom: Element, recout = 10) => {
   const props = getReactProps(chatDom);
-  const id = props?.children?.key;
+  let id = props?.children?.key;
+  if (!id) {
+    id = props?.children?.props?.children?.props?.model?.id?._serialized;
+  }
   // const id = model?.id?._serialized;
-  if (!id) return;
+  console.log('disposeChatDom', props, chatDom, id);
+  if (!id) {
+    if (recout > 0) {
+      setTimeout(() => {
+        disposeChatDom(chatDom, recout - 1);
+      }, 300);
+      return;
+    }
+    return;
+  }
   chatDom.setAttribute('chat-id', id);
   window._wpp.getRepeatFansInfoById(id);
   console.log([chatDom], id);
@@ -247,7 +259,11 @@ const monitorReFans = () => {
           addedNode?.getAttribute?.('role') === 'listitem' &&
           addedNode.querySelector('._ak8n ._ak8h > :not([class])')
         ) {
-          disposeChatDom(addedNode);
+          disposeChatDom(
+            addedNode.querySelector(
+              '._ak8n ._ak8h > :not([class])'
+            ) as HTMLElement
+          );
         } else if (
           addedNode?.querySelector?.(
             '[role="listitem"] ._ak8n ._ak8h > :not([class])'
