@@ -359,7 +359,11 @@ window._readCall = () => {
     // window._wpp.sendChatList();
   });
   whatsapp.ContactStore.on('add', (contactModel: whatsapp.ContactModel) => {
-    if (!['c.us', 'g.us'].includes(contactModel.id.server)) return;
+    if (
+      !contactModel.isMyContact ||
+      !['c.us', 'g.us'].includes(contactModel.id.server)
+    )
+      return;
     window._wpp.chatAdd(chatToFans(contactModel));
   });
 
@@ -970,7 +974,7 @@ window._call = {
     window._wpp.domSetLoading(inputDom, true);
 
     const tranText = await window._wpp.toSendTranslation(
-      inputDom.__lexicalTextContent!,
+      inputDom.__lexicalTextContent!.trim().replace(/\n\n/g, '\n'),
       true,
       true
     );
