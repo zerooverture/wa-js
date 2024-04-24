@@ -226,7 +226,7 @@ const disposeChatDom = (chatDom: Element, recout = 10) => {
     id = props?.children?.props?.children?.props?.model?.id?._serialized;
   }
   // const id = model?.id?._serialized;
-  console.log('disposeChatDom', props, chatDom, id);
+  // console.log('disposeChatDom', props, chatDom, id);
   if (!id) {
     if (recout > 0) {
       setTimeout(() => {
@@ -238,7 +238,7 @@ const disposeChatDom = (chatDom: Element, recout = 10) => {
   }
   chatDom.setAttribute('chat-id', id);
   window._wpp.getRepeatFansInfoById(id);
-  console.log([chatDom], id);
+  // console.log([chatDom], id);
 };
 
 const monitorReFans = () => {
@@ -255,6 +255,7 @@ const monitorReFans = () => {
       // @ts-ignore
       const addedNodes: HTMLElement[] = mutation.addedNodes;
       for (const addedNode of addedNodes) {
+        if (addedNode.className === 'ck-RepeatFans') continue;
         if (
           addedNode?.getAttribute?.('role') === 'listitem' &&
           addedNode.querySelector('._ak8n ._ak8h > :not([class])')
@@ -280,6 +281,12 @@ const monitorReFans = () => {
         ) {
           // console.log('addedNode', [addedNode]);
           disposeChatDom(addedNode);
+        } else if (
+          addedNode?.parentElement?.parentElement?.className === '_ak8h' &&
+          addedNode?.parentElement?.parentElement?.parentElement?.className ===
+            '_ak8n'
+        ) {
+          disposeChatDom(addedNode.parentElement);
         } else {
           // console.log('addedNode', [addedNode]);
         }
