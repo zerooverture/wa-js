@@ -175,6 +175,23 @@ const chatToFans = (
 
 // window._DrawerManager;
 
+const getMyStatus = async () => {
+  try {
+    const st = await status.getMyStatus();
+    return {
+      id: st.id,
+      contact: st.contact,
+    };
+  } catch (e: any) {
+    const id = whatsapp.UserPrefs.getMaybeMeUser();
+    const contact = await whatsapp.ContactStore.find(id);
+    console.log('getMyStatus', id, contact);
+    return {
+      id,
+      contact,
+    };
+  }
+};
 webpack.injectLoader();
 
 let __$propsName: string = '';
@@ -511,6 +528,21 @@ window._readCall = () => {
   // ------监测敏感行为
 };
 
+function chatModelFilter(callbackFn: (md: any, ...p: any) => boolean) {
+  // @ts-ignore
+  whatsapp.ChatStore._models.forEach(
+    (chatModel: whatsapp.ChatModel, ...params: any) => {
+      if (chatModel.active) whatsapp.Cmd.closeChat(chatModel);
+      const appearKey = '__x_shouldAppearInList';
+
+      Object.defineProperty(chatModel, appearKey, {
+        writable: false,
+        value: callbackFn.apply(null, [chatModel, ...params]),
+      });
+    }
+  );
+}
+
 window._call = {
   openChat(chatId: string | undefined, phone: string | undefined) {
     if (chatId) chat.openChatFromUnread(chatId);
@@ -527,7 +559,7 @@ window._call = {
     const activeChat = chat.getActiveChat();
     if (!activeChat) return;
 
-    const dialog = document.querySelector('._ajwz');
+    const dialog = document.querySelector('._ah9n');
     if (dialog) window._wpp.domSetLoading(dialog, true);
 
     const models = activeChat.attachMediaContents?._models;
@@ -539,11 +571,11 @@ window._call = {
             window._wpp.domSetLoading(dialog, false);
             return null;
           });
-      }
-      // 返回为空表示可能被阻止了，比如中文检测
-      if (!model.caption_tran) {
-        window._wpp.domSetLoading(dialog, false);
-        return;
+        // 返回为空表示可能被阻止了，比如中文检测
+        if (!model.caption_tran) {
+          window._wpp.domSetLoading(dialog, false);
+          return;
+        }
       }
     }
 
@@ -554,7 +586,7 @@ window._call = {
         {
           type: model.type,
           // ...model.mediaPrep._mediaData,
-          caption: model.caption_tran,
+          caption: model.caption_tran || model.caption,
         }
       );
     }
@@ -655,9 +687,9 @@ window._call = {
   async getUserinfo(): Promise<any> {
     if (!window._userinfo) {
       const profileName = profile.getMyProfileName();
-      const myStatus = await status.getMyStatus();
+      const myStatus = await getMyStatus();
 
-      const thumb = (await status.getMyStatus()).contact.profilePicThumb;
+      const thumb = (await getMyStatus()).contact.profilePicThumb;
       // console.log('thumb', thumb.img, thumb.filehash, JSON.stringify(thumb))
       const avatar = await window._wpp.getImageBase64ForUrl({ url: thumb.img });
 
@@ -669,7 +701,7 @@ window._call = {
         server_avatar: avatar,
         nickname:
           profileName ||
-          myStatus.contact.formattedTitle ||
+          myStatus.contact.formattedUser ||
           myStatus.contact.pushname ||
           myStatus.contact.name,
         phone: myStatus.id.user,
@@ -917,7 +949,7 @@ window._call = {
    */
   async getExportGroup(): Promise<any[]> {
     // await __wpp.chat.list({onlyUsers:true})
-    const myStatus = await status.getMyStatus();
+    const myStatus = await getMyStatus();
     return (await chat.list({ onlyGroups: true })).map(
       (chat: whatsapp.ChatModel) => {
         // console.log(chat,chat.groupMetadata,chat.groupMetadata?.owner)
@@ -998,6 +1030,62 @@ window._call = {
     window._wpp.domSetLoading(inputDom, false);
     window._ModalManager.close();
     console.log('editMsgSend', inputDom, msgModel);
+  },
+  async filterChatList(payload: { type: string; chatIds: string[] }) {
+    // const handler =
+    //   payload.type === 'FILTER' ? chatModelFilter : markReadFilter;
+
+    switch (payload.type) {
+      case 'ALL':
+        chatModelFilter(() => true);
+        break;
+      case 'UNREAD':
+        chatModelFilter(
+          (chatModel: whatsapp.ChatModel) =>
+            chatModel.hasUnread && !chatModel.mute.isMuted
+        );
+        break;
+      case 'WAIT_REPLY':
+        chatModelFilter((chatModel: whatsapp.ChatModel) => {
+          if (chatModel && chatModel.lastReceivedKey) {
+            return chatModel.lastReceivedKey.fromMe;
+          } else {
+            return false;
+          }
+        });
+        break;
+      case 'NEED_REPLY':
+        chatModelFilter((chatModel: whatsapp.ChatModel) => {
+          if (chatModel && chatModel.lastReceivedKey) {
+            return !chatModel.lastReceivedKey.fromMe;
+          } else {
+            return true;
+          }
+        });
+        break;
+      case 'CHAT':
+        chatModelFilter((chatModel: whatsapp.ChatModel) => chatModel.isUser);
+        break;
+      case 'GROUP':
+        chatModelFilter((chatModel: whatsapp.ChatModel) => chatModel.isGroup);
+        break;
+      default:
+        // auto 和 自定义 tab 都会传递一个会话id数组 ['18688886666@c.us', ...]
+        chatModelFilter((chatModel: whatsapp.ChatModel) =>
+          payload.chatIds.includes(chatModel.id._serialized)
+        );
+    }
+
+    // 修改 t 属性会触发列表 DOM 刷新，达到筛选目的
+    // @ts-ignore
+    const models: whatsapp.ChatModel[] = whatsapp.ChatStore._models;
+    if (models && models.length > 0) {
+      if (!models[0].t) models[0].t = 0;
+      else {
+        models[0].t += 1;
+        models[0].t -= 1;
+      }
+    }
   },
 };
 
